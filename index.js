@@ -276,7 +276,13 @@ const sellWizard = new Scenes.WizardScene(
     );
     if (!ctx.callbackQuery?.data) return;
     const data = ctx.callbackQuery.data;
-    await ctx.answerCbQuery();
+    
+    // Отвечаем на callback query
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {
+      console.log(`[SELL] Ошибка answerCbQuery:`, e.message);
+    }
 
     // Обработка кнопки "Я подписался - проверить"
     if (data === "chk_sub") {
@@ -285,9 +291,28 @@ const sellWizard = new Scenes.WizardScene(
       const missing = await getMissingSubs(ctx.telegram, ctx.from.id);
       if (missing.length) {
         console.log(`[SELL] Пользователь ${ctx.from.id} всё ещё не подписан на: ${missing.join(", ")}`);
-        await ctx.answerCbQuery(`❌ Ещё нет подписки на: ${missing.join(", ")}`, {
-          show_alert: true,
-        });
+        
+        // Пробуем показать alert
+        try {
+          await ctx.answerCbQuery(`❌ Ещё нет подписки на: ${missing.join(", ")}`, {
+            show_alert: true,
+          });
+        } catch (e) {
+          console.log(`[SELL] Не удалось показать alert:`, e.message);
+        }
+        
+        // Дополнительно отправляем обычное сообщение
+        try {
+          await ctx.replyWithHTML(
+            `❌ <b>Подписка не завершена!</b>\n\n` +
+            `Вы ещё не подписаны на: <b>${missing.join(", ")}</b>\n\n` +
+            `Подпишитесь на указанные каналы и нажмите кнопку ещё раз.`
+          );
+          console.log(`[SELL] Отправлено сообщение о недостающих подписках`);
+        } catch (e) {
+          console.error(`[SELL] Ошибка отправки сообщения о подписках:`, e);
+        }
+        
         return;
       }
 
@@ -513,7 +538,13 @@ const buyWizard = new Scenes.WizardScene(
     );
     if (!ctx.callbackQuery?.data) return;
     const data = ctx.callbackQuery.data;
-    await ctx.answerCbQuery();
+    
+    // Отвечаем на callback query
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {
+      console.log(`[BUY] Ошибка answerCbQuery:`, e.message);
+    }
 
     // Обработка кнопки "Я подписался - проверить"
     if (data === "chk_sub") {
@@ -522,9 +553,28 @@ const buyWizard = new Scenes.WizardScene(
       const missing = await getMissingSubs(ctx.telegram, ctx.from.id);
       if (missing.length) {
         console.log(`[BUY] Пользователь ${ctx.from.id} всё ещё не подписан на: ${missing.join(", ")}`);
-        await ctx.answerCbQuery(`❌ Ещё нет подписки на: ${missing.join(", ")}`, {
-          show_alert: true,
-        });
+        
+        // Пробуем показать alert
+        try {
+          await ctx.answerCbQuery(`❌ Ещё нет подписки на: ${missing.join(", ")}`, {
+            show_alert: true,
+          });
+        } catch (e) {
+          console.log(`[BUY] Не удалось показать alert:`, e.message);
+        }
+        
+        // Дополнительно отправляем обычное сообщение
+        try {
+          await ctx.replyWithHTML(
+            `❌ <b>Подписка не завершена!</b>\n\n` +
+            `Вы ещё не подписаны на: <b>${missing.join(", ")}</b>\n\n` +
+            `Подпишитесь на указанные каналы и нажмите кнопку ещё раз.`
+          );
+          console.log(`[BUY] Отправлено сообщение о недостающих подписках`);
+        } catch (e) {
+          console.error(`[BUY] Ошибка отправки сообщения о подписках:`, e);
+        }
+        
         return;
       }
 
