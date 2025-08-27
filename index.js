@@ -1,8 +1,14 @@
-require("dotenv").config();
+// !!! Проверь путь к .env и при необходимости поменяй его на свой
+require("dotenv").config({ path: "/opt/tg-beautynumber-bot/.env" });
+
 const { Telegraf, Scenes, session } = require("telegraf");
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const TARGET_CHAT_ID = Number(process.env.TARGET_CHAT_ID || 0);
+
+// Диагностика токена (не выводим сам токен)
+console.log("BOT_TOKEN length:", (BOT_TOKEN || "").length);
+console.log("BOT_TOKEN has whitespace?", /\s/.test(BOT_TOKEN || ""));
 
 if (!BOT_TOKEN) {
   console.error("BOT_TOKEN отсутствует. Укажите его в .env");
@@ -17,42 +23,36 @@ if (!TARGET_CHAT_ID) {
 // ---- Wizard сцена /sell ----
 const sellWizard = new Scenes.WizardScene(
   "sell-wizard",
-
   async (ctx) => {
     await ctx.reply(
       "Укажите оператора (МТС, Билайн, МегаФон, Tele2):\n(для отмены — /cancel)"
     );
     return ctx.wizard.next();
   },
-
   async (ctx) => {
     if (!ctx.message?.text) return;
     ctx.wizard.state.operator = ctx.message.text.trim();
     await ctx.reply("Регион или город:");
     return ctx.wizard.next();
   },
-
   async (ctx) => {
     if (!ctx.message?.text) return;
     ctx.wizard.state.region = ctx.message.text.trim();
     await ctx.reply("Введите сам номер (без пробелов):");
     return ctx.wizard.next();
   },
-
   async (ctx) => {
     if (!ctx.message?.text) return;
     ctx.wizard.state.number = ctx.message.text.trim();
     await ctx.reply("Цена (руб):");
     return ctx.wizard.next();
   },
-
   async (ctx) => {
     if (!ctx.message?.text) return;
     ctx.wizard.state.price = ctx.message.text.trim();
     await ctx.reply("Контакт для связи (телеграм / телефон):");
     return ctx.wizard.next();
   },
-
   async (ctx) => {
     if (!ctx.message?.text) return;
     ctx.wizard.state.contact = ctx.message.text.trim();
@@ -95,9 +95,7 @@ sellWizard.command("cancel", async (ctx) => {
 });
 
 async function bootstrap() {
-  const bot = new Telegraf(BOT_TOKEN, {
-    handlerTimeout: 30_000,
-  });
+  const bot = new Telegraf(BOT_TOKEN, { handlerTimeout: 30_000 });
 
   const stage = new Scenes.Stage([sellWizard]);
   bot.use(session());
@@ -124,8 +122,19 @@ async function bootstrap() {
     );
   });
 
-  console.log("Бот запущен (long polling).");
+  // На всякий случай удаляем webhook (мы на long polling)
+  try {
+    await bot.telegram.deleteWebhook();
+  } catch (e) {
+    console.warn(
+      "Не удалось удалить webhook (можно игнорировать):",
+      e?.description || e?.message || e
+    );
+  }
+
+  // ВАЖНО: сначала запускаем бота, потом лог
   await bot.launch({ dropPendingUpdates: true });
+  console.log("Бот запущен (long polling).");
 
   process.once("SIGINT", () => bot.stop("SIGINT"));
   process.once("SIGTERM", () => bot.stop("SIGTERM"));
