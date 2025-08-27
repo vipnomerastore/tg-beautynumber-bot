@@ -1,10 +1,15 @@
 // !!! Проверь путь к .env и при необходимости поменяй его на свой
-require("dotenv").config({ path: "/opt/tg-beautynumber-bot/.env" });
+require("dotenv").config({
+  path: "/opt/tg-beautynumber-bot/.env",
+  override: true,
+});
 
 const { Telegraf, Scenes, session } = require("telegraf");
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const TARGET_CHAT_ID = Number(process.env.TARGET_CHAT_ID || 0);
+
+const tokenLooksValid = /^\d+:[A-Za-z0-9_\-]{30,}$/.test(BOT_TOKEN || "");
 
 // Диагностика токена (не выводим сам токен)
 console.log("BOT_TOKEN length:", (BOT_TOKEN || "").length);
@@ -14,6 +19,7 @@ if (!BOT_TOKEN) {
   console.error("BOT_TOKEN отсутствует. Укажите его в .env");
   process.exit(1);
 }
+
 if (!TARGET_CHAT_ID) {
   console.warn(
     "WARNING: TARGET_CHAT_ID не задан. Постинг в канал/чат работать не будет."
