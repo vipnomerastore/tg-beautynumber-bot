@@ -1,64 +1,73 @@
-// !!! Проверь путь к .env и при необходимости поменяй его на свой
+// index.js
+// 1) Грузим .env по абсолютному пути и ПЕРЕЗАПИСЫВАЕМ переменные окружения
 require("dotenv").config({
-  path: "/opt/tg-beautynumber-bot/.env",
+  path: "/opt/tg-beautynumber-bot/.env", // ← при необходимости поменяй путь
   override: true,
 });
 
 const { Telegraf, Scenes, session } = require("telegraf");
 
-const BOT_TOKEN = process.env.BOT_TOKEN;
+const BOT_TOKEN = process.env.BOT_TOKEN || "";
 const TARGET_CHAT_ID = Number(process.env.TARGET_CHAT_ID || 0);
 
-const tokenLooksValid = /^\d+:[A-Za-z0-9_\-]{30,}$/.test(BOT_TOKEN || "");
+// Диагностика токена (без вывода самого значения)
+console.log("BOT_TOKEN length:", BOT_TOKEN.length);
+console.log("BOT_TOKEN has whitespace?", /\s/.test(BOT_TOKEN));
 
-// Диагностика токена (не выводим сам токен)
-console.log("BOT_TOKEN length:", (BOT_TOKEN || "").length);
-console.log("BOT_TOKEN has whitespace?", /\s/.test(BOT_TOKEN || ""));
-
-if (!BOT_TOKEN) {
-  console.error("BOT_TOKEN отсутствует. Укажите его в .env");
+// Жёсткая валидация формата токена (ожидается "digits:hash")
+const tokenLooksValid = /^\d+:[A-Za-z0-9_\-]{30,}$/.test(BOT_TOKEN);
+if (!tokenLooksValid) {
+  console.error(
+    "Некорректный BOT_TOKEN (ожидается формат digits:hash). Проверь .env"
+  );
   process.exit(1);
 }
-
 if (!TARGET_CHAT_ID) {
   console.warn(
     "WARNING: TARGET_CHAT_ID не задан. Постинг в канал/чат работать не будет."
   );
 }
 
-// ---- Wizard сцена /sell ----
+// ───────────────────────────────────────────────────────────────────────────────
+// Wizard сцена /sell
 const sellWizard = new Scenes.WizardScene(
   "sell-wizard",
+
   async (ctx) => {
     await ctx.reply(
       "Укажите оператора (МТС, Билайн, МегаФон, Tele2):\n(для отмены — /cancel)"
     );
     return ctx.wizard.next();
   },
+
   async (ctx) => {
     if (!ctx.message?.text) return;
     ctx.wizard.state.operator = ctx.message.text.trim();
     await ctx.reply("Регион или город:");
     return ctx.wizard.next();
   },
+
   async (ctx) => {
     if (!ctx.message?.text) return;
     ctx.wizard.state.region = ctx.message.text.trim();
     await ctx.reply("Введите сам номер (без пробелов):");
     return ctx.wizard.next();
   },
+
   async (ctx) => {
     if (!ctx.message?.text) return;
     ctx.wizard.state.number = ctx.message.text.trim();
     await ctx.reply("Цена (руб):");
     return ctx.wizard.next();
   },
+
   async (ctx) => {
     if (!ctx.message?.text) return;
     ctx.wizard.state.price = ctx.message.text.trim();
     await ctx.reply("Контакт для связи (телеграм / телефон):");
     return ctx.wizard.next();
   },
+
   async (ctx) => {
     if (!ctx.message?.text) return;
     ctx.wizard.state.contact = ctx.message.text.trim();
@@ -100,6 +109,8 @@ sellWizard.command("cancel", async (ctx) => {
   return ctx.scene.leave();
 });
 
+// ───────────────────────────────────────────────────────────────────────────────
+// Bootstrap
 async function bootstrap() {
   const bot = new Telegraf(BOT_TOKEN, { handlerTimeout: 30_000 });
 
@@ -138,7 +149,7 @@ async function bootstrap() {
     );
   }
 
-  // ВАЖНО: сначала запускаем бота, потом лог
+  // ВАЖНО: сначала запускаем бота, потом лог об успешном запуске
   await bot.launch({ dropPendingUpdates: true });
   console.log("Бот запущен (long polling).");
 
