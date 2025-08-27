@@ -67,16 +67,36 @@ async function sendToAll(tg, text, extra) {
 function formatChannelsList() {
   if (CHAT_TARGETS.length === 0) return "";
   
-  const channelNames = CHAT_TARGETS.map(target => {
-    // Если это username канала (начинается с @), отображаем как есть
-    if (target.startsWith('@')) {
-      return target;
-    }
-    // Если это числовой ID, пытаемся найти соответствующий username
-    // Для простоты пока отображаем как есть, можно улучшить позже
-    return target;
-  });
+  console.log('[formatChannelsList] Все цели:', CHAT_TARGETS);
   
+  const channelNames = CHAT_TARGETS
+    .filter(target => {
+      // Показываем только каналы (начинающиеся с @) или каналы с ID начинающиеся с -100
+      if (target.startsWith('@')) {
+        console.log('[formatChannelsList] Включаем канал по @:', target);
+        return true;
+      }
+      // Исключаем ID личных чатов (обычно положительные числа меньше миллиарда)
+      if (/^-?\d+$/.test(target)) {
+        const id = Number(target);
+        const isChannel = id < -1000000000; // -1,000,000,000
+        console.log(`[formatChannelsList] ID ${target}: ${isChannel ? 'канал' : 'личный чат'} (исключаем: ${!isChannel})`);
+        return isChannel;
+      }
+      console.log('[formatChannelsList] Неизвестный формат, исключаем:', target);
+      return false;
+    })
+    .map(target => {
+      // Если это username канала (начинается с @), отображаем как есть
+      if (target.startsWith('@')) {
+        return target;
+      }
+      // Для числовых ID каналов можем попробовать получить username
+      // Пока просто отображаем ID
+      return target;
+    });
+  
+  console.log('[formatChannelsList] Итоговый список для пользователя:', channelNames);
   return channelNames.join(", ");
 }
 
