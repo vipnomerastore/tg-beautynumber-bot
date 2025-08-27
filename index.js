@@ -64,6 +64,46 @@ async function sendToAll(tg, text, extra) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
+// REQUIRED SUBSCRIPTIONS (перед публикацией нужно быть подписанным)
+
+const REQUIRED_CHANNELS = ["@vipstoresim", "@nomera_russian"];
+
+/** проверка членства пользователя в канале */
+async function isChannelMember(tg, channel, userId) {
+  try {
+    const m = await tg.getChatMember(channel, userId);
+    return ["creator", "administrator", "member"].includes(m.status);
+  } catch (e) {
+    console.error(
+      "[checkSub] getChatMember failed:",
+      channel,
+      e?.description || e?.message || e
+    );
+    return false;
+  }
+}
+
+/** вернуть список каналов, на которые пользователь еще НЕ подписан */
+async function getMissingSubs(tg, userId) {
+  const missing = [];
+  for (const ch of REQUIRED_CHANNELS) {
+    const ok = await isChannelMember(tg, ch, userId);
+    if (!ok) missing.push(ch);
+  }
+  return missing;
+}
+
+/** клавиатура «подпишись и проверь» */
+function subscribeKeyboard(channels) {
+  const rows = channels.map((ch) => {
+    const url = `https://t.me/${String(ch).replace("@", "")}`;
+    return [Markup.button.url(`➕ Подписаться: ${ch}`, url)];
+  });
+  rows.push([Markup.button.callback("✅ Я подписался — проверить", "chk_sub")]);
+  return Markup.inlineKeyboard(rows);
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
 // UI
 
 const mainMenu = () =>
@@ -175,6 +215,7 @@ const sellWizard = new Scenes.WizardScene(
     return ctx.wizard.next();
   },
 
+  // ИЗМЕНЁННЫЙ финальный шаг: добавлена проверка подписок
   async (ctx) => {
     if (!ctx.callbackQuery?.data) return;
     const data = ctx.callbackQuery.data;
@@ -189,6 +230,18 @@ const sellWizard = new Scenes.WizardScene(
         `Номер: <b>${escapeHTML(d.number)}</b>\n` +
         `Цена: <b>${escapeHTML(formatRUB(d.price))}</b>\n` +
         `Контакт: <b>${escapeHTML(d.contact)}</b>`;
+
+      // Проверка подписки
+      const missing = await getMissingSubs(ctx.telegram, ctx.from.id);
+      if (missing.length) {
+        ctx.wizard.state.__pendingPost = post;
+        ctx.wizard.state.__intent = "sell";
+        await ctx.replyWithHTML(
+          "Чтобы опубликовать объявление, подпишитесь на каналы и нажмите «проверить»:",
+          subscribeKeyboard(missing)
+        );
+        return; // остаемся в шаге
+      }
 
       try {
         const sent = await sendToAll(ctx.telegram, post, {
@@ -212,11 +265,11 @@ const sellWizard = new Scenes.WizardScene(
           mainMenu()
         );
       }
+      return ctx.scene.leave();
     } else if (data === "sell_cancel") {
       await ctx.replyWithHTML("❎ Публикация отменена.", mainMenu());
+      return ctx.scene.leave();
     }
-
-    return ctx.scene.leave();
   }
 );
 
@@ -316,6 +369,7 @@ const buyWizard = new Scenes.WizardScene(
     return ctx.wizard.next();
   },
 
+  // ИЗМЕНЁННЫЙ финальный шаг: добавлена проверка подписок
   async (ctx) => {
     if (!ctx.callbackQuery?.data) return;
     const data = ctx.callbackQuery.data;
@@ -331,6 +385,17 @@ const buyWizard = new Scenes.WizardScene(
         `Регион: <b>${escapeHTML(d.region)}</b>\n` +
         `Контакт: <b>${escapeHTML(d.contact)}</b>\n` +
         `Комментарий: <b>${escapeHTML(d.comment)}</b>`;
+
+      const missing = await getMissingSubs(ctx.telegram, ctx.from.id);
+      if (missing.length) {
+        ctx.wizard.state.__pendingPost = post;
+        ctx.wizard.state.__intent = "buy";
+        await ctx.replyWithHTML(
+          "Чтобы отправить заявку, подпишитесь на каналы и нажмите «проверить»:",
+          subscribeKeyboard(missing)
+        );
+        return; // остаемся в шаге
+      }
 
       try {
         const sent = await sendToAll(ctx.telegram, post, {
@@ -354,11 +419,11 @@ const buyWizard = new Scenes.WizardScene(
           mainMenu()
         );
       }
+      return ctx.scene.leave();
     } else if (data === "buy_cancel") {
       await ctx.replyWithHTML("❎ Заявка отменена.", mainMenu());
+      return ctx.scene.leave();
     }
-
-    return ctx.scene.leave();
   }
 );
 
@@ -415,6 +480,59 @@ async function bootstrap() {
   bot.on("text", async (ctx, next) => {
     if (ctx.scene?.current) return next();
     return sendWelcome(ctx);
+  });
+
+  // Кнопка «Я подписался — проверить»
+  bot.action("chk_sub", async (ctx) => {
+    try {
+      const missing = await getMissingSubs(ctx.telegram, ctx.from.id);
+      if (missing.length) {
+        await ctx.answerCbQuery(`Ещё нет подписки на: ${missing.join(", ")}`, {
+          show_alert: false,
+        });
+        return;
+      }
+      const st = ctx.scene?.state;
+      const post = st?.__pendingPost;
+      if (post) {
+        try {
+          const sent = await sendToAll(ctx.telegram, post, {
+            parse_mode: "HTML",
+          });
+          if (sent) {
+            // обновим сообщение с кнопкой
+            try {
+              await ctx.editMessageText(
+                "✅ Подписка подтверждена. Сообщение опубликовано."
+              );
+            } catch {}
+            await ctx.replyWithHTML("Готово! Возврат в меню.", mainMenu());
+          } else {
+            await ctx.replyWithHTML(
+              "⚠️ Нет целей публикации. Проверьте TARGET_CHAT_ID/EXTRA_CHAT_IDS.",
+              mainMenu()
+            );
+          }
+        } catch (e) {
+          console.error("Ошибка авто-публикации после проверки:", e);
+          await ctx.replyWithHTML(
+            "❌ Не удалось опубликовать. Попробуйте ещё раз.",
+            mainMenu()
+          );
+        }
+        delete st.__pendingPost;
+        delete st.__intent;
+        return ctx.scene.leave();
+      }
+      await ctx.answerCbQuery("Подписка подтверждена, можно публиковать.", {
+        show_alert: false,
+      });
+    } catch (e) {
+      console.error("chk_sub error:", e);
+      await ctx.answerCbQuery("Ошибка проверки. Попробуйте позже.", {
+        show_alert: true,
+      });
+    }
   });
 
   try {
