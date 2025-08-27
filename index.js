@@ -128,7 +128,7 @@ const sellWizard = new Scenes.WizardScene(
       ctx.wizard.state.operator = ctx.message.text.trim();
     } else return;
 
-    await ctx.replyWithHTML("🗺️ Укажите <b>регион/город</b>:");
+    await ctx.replyWithHTML("🗺️ Укажите <b>регион номера</b>:");
     return ctx.wizard.next();
   },
 
