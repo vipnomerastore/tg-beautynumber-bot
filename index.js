@@ -274,7 +274,7 @@ const buyWizard = new Scenes.WizardScene(
     if (!ctx.message?.text) return;
     ctx.wizard.state.budget = ctx.message.text.trim();
     await ctx.replyWithHTML(
-      "🗺️ <b>Регион номера</b> (если нет — введите <code>-</code>):"
+      "🗺️ <b>Регион номера</b> (если нет — введите прочерк):"
     );
     return ctx.wizard.next();
   },
@@ -291,9 +291,7 @@ const buyWizard = new Scenes.WizardScene(
   async (ctx) => {
     if (!ctx.message?.text) return;
     ctx.wizard.state.contact = ctx.message.text.trim();
-    await ctx.replyWithHTML(
-      "📝 <b>Комментарий</b> (необязательно, можно <code>-</code>):"
-    );
+    await ctx.replyWithHTML("📝 <b>Комментарий</b> (необязательно):");
     return ctx.wizard.next();
   },
 
