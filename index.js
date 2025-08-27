@@ -311,7 +311,7 @@ const buyWizard = new Scenes.WizardScene(
     if (!ctx.message?.text) return;
     ctx.wizard.state.pattern = ctx.message.text.trim();
     await ctx.replyWithHTML(
-      "📡 Выберите <b>оператора</б> или введите вручную:",
+      "📡 Выберите <b>оператора</b> или введите вручную:",
       operatorInlineKeyboard()
     );
     return ctx.wizard.next();
