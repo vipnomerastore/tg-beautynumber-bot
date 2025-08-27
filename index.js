@@ -353,7 +353,7 @@ const buyWizard = new Scenes.WizardScene(
 
     const d = ctx.wizard.state;
     const preview =
-      "🔎 <b>Заявка на покупку красивого номера</b>\n" +
+      "🔎 <b>Заявка на покупку красивого номера</б>\n" + // <-- тут НЕ будет использоваться в канале, только в личке
       `Ищу номер: <b>${escapeHTML(d.pattern)}</b>\n` +
       `Оператор: <b>${escapeHTML(d.operator)}</b>\n` +
       `Бюджет: <b>${escapeHTML(formatRUB(d.budget))}</b>\n` +
@@ -440,6 +440,15 @@ async function bootstrap() {
   const stage = new Scenes.Stage([sellWizard, buyWizard]);
   bot.use(session());
   bot.use(stage.middleware());
+
+  // ⛔️ ГЛУШИЛКА: игнорируем любые чаты, кроме приватных (никаких сообщений в канал/группу)
+  bot.use(async (ctx, next) => {
+    const type = ctx.chat?.type;
+    if (type && type !== "private") {
+      return; // тихо выходим — ничего не пишем в группу/канал
+    }
+    return next();
+  });
 
   const sendWelcome = async (ctx) => {
     const text =
