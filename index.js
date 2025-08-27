@@ -300,7 +300,7 @@ const buyWizard = new Scenes.WizardScene(
     const d = ctx.wizard.state;
     const preview =
       "🔎 <b>Заявка на покупку красивого номера</b>\n" +
-      `Искомый номер: <b>${escapeHTML(d.pattern)}</b>\n` +
+      `Ищу номер: <b>${escapeHTML(d.pattern)}</b>\n` +
       `Оператор: <b>${escapeHTML(d.operator)}</b>\n` +
       `Бюджет: <b>${escapeHTML(formatRUB(d.budget))}</b>\n` +
       `Регион: <b>${escapeHTML(d.region)}</b>\n` +
@@ -323,7 +323,7 @@ const buyWizard = new Scenes.WizardScene(
       const d = ctx.wizard.state;
       const post =
         "🔎 <b>Заявка на покупку красивого номера</b>\n" +
-        `Искомый номер: <b>${escapeHTML(d.pattern)}</b>\n` +
+        `Ищу номер: <b>${escapeHTML(d.pattern)}</b>\n` +
         `Оператор: <b>${escapeHTML(d.operator)}</b>\n` +
         `Бюджет: <b>${escapeHTML(formatRUB(d.budget))}</b>\n` +
         `Регион: <b>${escapeHTML(d.region)}</b>\n` +
