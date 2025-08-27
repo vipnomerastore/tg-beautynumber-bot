@@ -296,7 +296,7 @@ const buyWizard = new Scenes.WizardScene(
     if (!ctx.message?.text) return;
     ctx.wizard.state.pattern = ctx.message.text.trim();
     await ctx.replyWithHTML(
-      "📡 Выберите <b>оператора</б> или введите вручную:",
+      "📡 Выберите <b>оператора</b> или введите вручную:",
       operatorInlineKeyboard()
     );
     return ctx.wizard.next();
@@ -481,7 +481,7 @@ async function bootstrap() {
     return sendWelcome(ctx);
   });
 
-  // Кнопка «Я подписался — проверить» (ВНУТРИ bootstrap)
+  // Кнопка «Я подписался — проверить» (строго внутри bootstrap)
   bot.action("chk_sub", async (ctx) => {
     try {
       const missing = await getMissingSubs(ctx.telegram, ctx.from.id);
