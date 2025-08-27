@@ -41,30 +41,84 @@ if (CHAT_TARGETS.length === 0) {
   );
 }
 
-// Универсальная отправка во все цели
+// ───────────────────────────────────────────────────────────────────────────────
+// HELPERS: членство, рассылка, форматирование
+
+let BOT_ID = 0;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function isMember(tg, chat) {
+  try {
+    const info = await tg.getChatMember(chat, BOT_ID);
+    const st = info?.status;
+    // creator/administrator/member — ок
+    if (st === "creator" || st === "administrator" || st === "member")
+      return true;
+    // restricted может быть с запретом на отправку
+    if (st === "restricted") {
+      // если у объекта есть can_send_messages === true — допускаем
+      return info?.can_send_messages !== false;
+    }
+    return false; // left/kicked/unknown
+  } catch (e) {
+    // Например, чат приватный и бот не участник → 400/403
+    console.warn("[isMember] fail:", chat, e?.description || e?.message || e);
+    return false;
+  }
+}
+
+// Универсальная отправка во все цели с проверкой членства и бэкоффом на 429
 async function sendToAll(tg, text, extra) {
   if (CHAT_TARGETS.length === 0) return false;
   console.log("[sendToAll] targets:", CHAT_TARGETS.join(", "));
   let ok = false;
+
   for (const target of CHAT_TARGETS) {
+    const chatId = /^-?\d+$/.test(target) ? Number(target) : target;
+
+    // Проверим членство перед отправкой, чтобы не ловить Forbidden и не спамить 429
+    const member = await isMember(tg, chatId);
+    if (!member) {
+      console.warn(
+        `[sendToAll] skip -> ${target} (bot is not a member or has no rights)`
+      );
+      continue;
+    }
+
     try {
-      const chatId = /^-?\d+$/.test(target) ? Number(target) : target;
       await tg.sendMessage(chatId, text, extra);
       ok = true;
       console.log("[sendToAll] sent ->", target);
     } catch (e) {
-      console.error(
-        "[sendToAll] error ->",
-        target,
-        e?.description || e?.message || e
-      );
+      const desc = e?.description || e?.message || String(e);
+      const retry =
+        (e?.parameters && e.parameters.retry_after) ||
+        (desc.match(/retry after (\d+)/i)?.[1] &&
+          Number(desc.match(/retry after (\d+)/i)[1])) ||
+        0;
+      console.error("[sendToAll] error ->", target, desc);
+
+      if (retry > 0) {
+        console.warn(
+          `[sendToAll] rate limited. waiting ${retry}s then retry -> ${target}`
+        );
+        await sleep(retry * 1000);
+        try {
+          await tg.sendMessage(chatId, text, extra);
+          ok = true;
+          console.log("[sendToAll] sent after wait ->", target);
+        } catch (err2) {
+          console.error(
+            "[sendToAll] retry failed ->",
+            target,
+            err2?.description || err2?.message || err2
+          );
+        }
+      }
     }
   }
   return ok;
 }
-
-// ───────────────────────────────────────────────────────────────────────────────
-// UI
 
 const mainMenu = () =>
   Markup.keyboard([["🟢 Продать", "🔎 Купить"], ["ℹ️ Помощь"]])
@@ -274,7 +328,7 @@ const buyWizard = new Scenes.WizardScene(
     if (!ctx.message?.text) return;
     ctx.wizard.state.budget = ctx.message.text.trim();
     await ctx.replyWithHTML(
-      "🗺️ <b>Регион номера</b> (если нет — введите прочерк):"
+      "🗺️ <b>Регион номера</b> (если нет — введите <code>-</code>):"
     );
     return ctx.wizard.next();
   },
@@ -291,7 +345,9 @@ const buyWizard = new Scenes.WizardScene(
   async (ctx) => {
     if (!ctx.message?.text) return;
     ctx.wizard.state.contact = ctx.message.text.trim();
-    await ctx.replyWithHTML("📝 <b>Комментарий</b> (необязательно):");
+    await ctx.replyWithHTML(
+      "📝 <b>Комментарий</b> (необязательно, можно <code>-</code>):"
+    );
     return ctx.wizard.next();
   },
 
@@ -377,6 +433,11 @@ async function bootstrap() {
   bot.use(session());
   bot.use(stage.middleware());
 
+  // Узнаём ID бота (для проверок членства)
+  const me = await bot.telegram.getMe();
+  BOT_ID = me.id;
+  console.log("BOT_ID:", BOT_ID);
+
   const sendWelcome = async (ctx) => {
     const text =
       "👋 <b>Добро пожаловать!</b>\n" +
@@ -387,6 +448,26 @@ async function bootstrap() {
 
   bot.start(sendWelcome);
   bot.command("menu", sendWelcome);
+
+  // Проверка статусов целей
+  bot.command("targets", async (ctx) => {
+    let lines = [];
+    for (const t of CHAT_TARGETS) {
+      const chatId = /^-?\d+$/.test(t) ? Number(t) : t;
+      let status = "unknown";
+      try {
+        const m = await ctx.telegram.getChatMember(chatId, BOT_ID);
+        status = m?.status || "unknown";
+      } catch (e) {
+        status = e?.description || e?.message || "error";
+      }
+      lines.push(`${t} — ${status}`);
+    }
+    await ctx.replyWithHTML(
+      "<b>Цели публикации</b>\n" +
+        lines.map((x) => "• " + escapeHTML(x)).join("\n")
+    );
+  });
 
   bot.hears("ℹ️ Помощь", async (ctx) => {
     await ctx.replyWithHTML(
