@@ -72,24 +72,38 @@ const REQUIRED_CHANNELS = ["@vipstoresim", "@nomera_russian"];
 async function isChannelMember(tg, channel, userId) {
   try {
     const m = await tg.getChatMember(channel, userId);
-    return ["creator", "administrator", "member"].includes(m.status);
+    const validStatuses = ["creator", "administrator", "member"];
+    const isValid = validStatuses.includes(m.status);
+    console.log(`[checkSub] ${channel} для пользователя ${userId}: ${m.status} (${isValid ? 'OK' : 'НЕТ'})`);
+    return isValid;
   } catch (e) {
     console.error(
       "[checkSub] getChatMember failed:",
       channel,
+      "user:",
+      userId,
+      "error:",
       e?.description || e?.message || e
     );
+    // Если канал не найден или бот не имеет прав - считаем что пользователь не подписан
     return false;
   }
 }
 
 /** вернуть список каналов, на которые пользователь еще НЕ подписан */
 async function getMissingSubs(tg, userId) {
+  console.log(`[getMissingSubs] Проверяю подписки для пользователя ${userId}`);
   const missing = [];
   for (const ch of REQUIRED_CHANNELS) {
     const ok = await isChannelMember(tg, ch, userId);
-    if (!ok) missing.push(ch);
+    if (!ok) {
+      missing.push(ch);
+      console.log(`[getMissingSubs] Пользователь ${userId} НЕ подписан на ${ch}`);
+    } else {
+      console.log(`[getMissingSubs] Пользователь ${userId} подписан на ${ch}`);
+    }
   }
+  console.log(`[getMissingSubs] Итого не хватает подписок: ${missing.length} из ${REQUIRED_CHANNELS.length}`);
   return missing;
 }
 
@@ -236,7 +250,8 @@ const sellWizard = new Scenes.WizardScene(
         ctx.wizard.state.__pendingPost = post;
         ctx.wizard.state.__intent = "sell";
         await ctx.replyWithHTML(
-          "Чтобы опубликовать объявление, подпишитесь на каналы и нажмите «проверить»:",
+          "📢 <b>Для публикации объявления нужно подписаться на наши каналы:</b>\n\n" +
+          "Подпишитесь на каналы ниже и нажмите «✅ Я подписался — проверить»:",
           subscribeKeyboard(missing)
         );
         return; // остаёмся в шаге
@@ -296,7 +311,7 @@ const buyWizard = new Scenes.WizardScene(
     if (!ctx.message?.text) return;
     ctx.wizard.state.pattern = ctx.message.text.trim();
     await ctx.replyWithHTML(
-      "📡 Выберите <b>оператора</b> или введите вручную:",
+      "📡 Выберите <b>оператора</б> или введите вручную:",
       operatorInlineKeyboard()
     );
     return ctx.wizard.next();
@@ -353,7 +368,7 @@ const buyWizard = new Scenes.WizardScene(
 
     const d = ctx.wizard.state;
     const preview =
-      "🔎 <b>Заявка на покупку красивого номера</б>\n" + // <-- тут НЕ будет использоваться в канале, только в личке
+      "🔎 <b>Заявка на покупку красивого номера</b>\n" +
       `Ищу номер: <b>${escapeHTML(d.pattern)}</b>\n` +
       `Оператор: <b>${escapeHTML(d.operator)}</b>\n` +
       `Бюджет: <b>${escapeHTML(formatRUB(d.budget))}</b>\n` +
@@ -390,7 +405,8 @@ const buyWizard = new Scenes.WizardScene(
         ctx.wizard.state.__pendingPost = post;
         ctx.wizard.state.__intent = "buy";
         await ctx.replyWithHTML(
-          "Чтобы отправить заявку, подпишитесь на каналы и нажмите «проверить»:",
+          "📢 <b>Для отправки заявки нужно подписаться на наши каналы:</b>\n\n" +
+          "Подпишитесь на каналы ниже и нажмите «✅ Я подписался — проверить»:",
           subscribeKeyboard(missing)
         );
         return; // остаёмся в шаге
@@ -441,15 +457,6 @@ async function bootstrap() {
   bot.use(session());
   bot.use(stage.middleware());
 
-  // ⛔️ ГЛУШИЛКА: игнорируем любые чаты, кроме приватных (никаких сообщений в канал/группу)
-  bot.use(async (ctx, next) => {
-    const type = ctx.chat?.type;
-    if (type && type !== "private") {
-      return; // тихо выходим — ничего не пишем в группу/канал
-    }
-    return next();
-  });
-
   const sendWelcome = async (ctx) => {
     const text =
       "👋 <b>Добро пожаловать!</b>\n" +
@@ -490,19 +497,25 @@ async function bootstrap() {
     return sendWelcome(ctx);
   });
 
-  // Кнопка «Я подписался — проверить» (строго внутри bootstrap)
+  // Кнопка «Я подписался — проверить» (ВНУТРИ bootstrap)
   bot.action("chk_sub", async (ctx) => {
     try {
+      await ctx.answerCbQuery("Проверяю подписки...", { show_alert: false });
+      
       const missing = await getMissingSubs(ctx.telegram, ctx.from.id);
       if (missing.length) {
         await ctx.answerCbQuery(`Ещё нет подписки на: ${missing.join(", ")}`, {
-          show_alert: false,
+          show_alert: true,
         });
         return;
       }
-      const st = ctx.scene?.state;
+
+      // Получаем состояние текущей сцены
+      const st = ctx.wizard?.state || ctx.session?.wizard?.state;
       const post = st?.__pendingPost;
-      if (post) {
+      const intent = st?.__intent;
+      
+      if (post && (intent === "sell" || intent === "buy")) {
         try {
           const sent = await sendToAll(ctx.telegram, post, {
             parse_mode: "HTML",
@@ -510,13 +523,18 @@ async function bootstrap() {
           if (sent) {
             try {
               await ctx.editMessageText(
-                "✅ Подписка подтверждена. Сообщение опубликовано."
+                "✅ Подписка подтверждена. Сообщение опубликовано!"
               );
             } catch {}
-            await ctx.replyWithHTML("Готово! Возврат в меню.", mainMenu());
+            
+            const successMsg = intent === "sell" 
+              ? "✅ Объявление успешно опубликовано!" 
+              : "✅ Заявка успешно отправлена!";
+            
+            await ctx.replyWithHTML(successMsg, mainMenu());
           } else {
             await ctx.replyWithHTML(
-              "⚠️ Нет целей публикации. Проверьте TARGET_CHAT_ID/EXTRA_CHAT_IDS.",
+              "⚠️ Нет целей публикации. Проверьте настройки бота.",
               mainMenu()
             );
           }
@@ -527,16 +545,21 @@ async function bootstrap() {
             mainMenu()
           );
         }
-        delete st.__pendingPost;
-        delete st.__intent;
+        
+        // Очищаем временные данные
+        if (st) {
+          delete st.__pendingPost;
+          delete st.__intent;
+        }
         return ctx.scene.leave();
       }
-      await ctx.answerCbQuery("Подписка подтверждена, можно публиковать.", {
-        show_alert: false,
+      
+      await ctx.answerCbQuery("✅ Подписка подтверждена!", {
+        show_alert: true,
       });
     } catch (e) {
       console.error("chk_sub error:", e);
-      await ctx.answerCbQuery("Ошибка проверки. Попробуйте позже.", {
+      await ctx.answerCbQuery("❌ Ошибка проверки. Попробуйте позже.", {
         show_alert: true,
       });
     }
