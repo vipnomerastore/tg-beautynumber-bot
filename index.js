@@ -215,7 +215,7 @@ const sellWizard = new Scenes.WizardScene(
     return ctx.wizard.next();
   },
 
-  // ИЗМЕНЁННЫЙ финальный шаг: добавлена проверка подписок
+  // финальный шаг: проверка подписок → публикация
   async (ctx) => {
     if (!ctx.callbackQuery?.data) return;
     const data = ctx.callbackQuery.data;
@@ -231,7 +231,6 @@ const sellWizard = new Scenes.WizardScene(
         `Цена: <b>${escapeHTML(formatRUB(d.price))}</b>\n` +
         `Контакт: <b>${escapeHTML(d.contact)}</b>`;
 
-      // Проверка подписки
       const missing = await getMissingSubs(ctx.telegram, ctx.from.id);
       if (missing.length) {
         ctx.wizard.state.__pendingPost = post;
@@ -240,7 +239,7 @@ const sellWizard = new Scenes.WizardScene(
           "Чтобы опубликовать объявление, подпишитесь на каналы и нажмите «проверить»:",
           subscribeKeyboard(missing)
         );
-        return; // остаемся в шаге
+        return; // остаёмся в шаге
       }
 
       try {
@@ -297,7 +296,7 @@ const buyWizard = new Scenes.WizardScene(
     if (!ctx.message?.text) return;
     ctx.wizard.state.pattern = ctx.message.text.trim();
     await ctx.replyWithHTML(
-      "📡 Выберите <b>оператора</b> или введите вручную:",
+      "📡 Выберите <b>оператора</б> или введите вручную:",
       operatorInlineKeyboard()
     );
     return ctx.wizard.next();
@@ -369,7 +368,7 @@ const buyWizard = new Scenes.WizardScene(
     return ctx.wizard.next();
   },
 
-  // ИЗМЕНЁННЫЙ финальный шаг: добавлена проверка подписок
+  // финальный шаг: проверка подписок → публикация
   async (ctx) => {
     if (!ctx.callbackQuery?.data) return;
     const data = ctx.callbackQuery.data;
@@ -394,7 +393,7 @@ const buyWizard = new Scenes.WizardScene(
           "Чтобы отправить заявку, подпишитесь на каналы и нажмите «проверить»:",
           subscribeKeyboard(missing)
         );
-        return; // остаемся в шаге
+        return; // остаёмся в шаге
       }
 
       try {
@@ -482,7 +481,7 @@ async function bootstrap() {
     return sendWelcome(ctx);
   });
 
-  // Кнопка «Я подписался — проверить»
+  // Кнопка «Я подписался — проверить» (ВНУТРИ bootstrap)
   bot.action("chk_sub", async (ctx) => {
     try {
       const missing = await getMissingSubs(ctx.telegram, ctx.from.id);
@@ -500,7 +499,6 @@ async function bootstrap() {
             parse_mode: "HTML",
           });
           if (sent) {
-            // обновим сообщение с кнопкой
             try {
               await ctx.editMessageText(
                 "✅ Подписка подтверждена. Сообщение опубликовано."
