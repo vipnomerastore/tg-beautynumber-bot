@@ -273,7 +273,9 @@ const buyWizard = new Scenes.WizardScene(
   async (ctx) => {
     if (!ctx.message?.text) return;
     ctx.wizard.state.budget = ctx.message.text.trim();
-    await ctx.replyWithHTML("🗺️ <b>Регион номера</b> (если нет — введите ):");
+    await ctx.replyWithHTML(
+      "🗺️ <b>Регион номера</b> (если нет — введите прочерк):"
+    );
     return ctx.wizard.next();
   },
 
