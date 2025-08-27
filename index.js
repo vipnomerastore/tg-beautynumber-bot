@@ -293,6 +293,12 @@ const sellWizard = new Scenes.WizardScene(
         );
         ctx.wizard.state.__pendingPost = post;
         ctx.wizard.state.__intent = "sell";
+        
+        // Также сохраняем в сессии для доступа из обработчика кнопки
+        ctx.session.__state = {
+          __pendingPost: post,
+          __intent: "sell"
+        };
 
         console.log(
           `[SELL] Отправляю сообщение о необходимости подписки пользователю ${ctx.from.id}`
@@ -472,6 +478,12 @@ const buyWizard = new Scenes.WizardScene(
         );
         ctx.wizard.state.__pendingPost = post;
         ctx.wizard.state.__intent = "buy";
+        
+        // Также сохраняем в сессии для доступа из обработчика кнопки
+        ctx.session.__state = {
+          __pendingPost: post,
+          __intent: "buy"
+        };
 
         console.log(
           `[BUY] Отправляю сообщение о необходимости подписки пользователю ${ctx.from.id}`
@@ -591,12 +603,21 @@ async function bootstrap() {
     return sendWelcome(ctx);
   });
 
+  // Отладочный обработчик для всех callback query
+  bot.on("callback_query", async (ctx, next) => {
+    console.log(`[callback_query] Получен callback от пользователя ${ctx.from.id}: ${ctx.callbackQuery.data}`);
+    return next();
+  });
+
   // Кнопка «Я подписался — проверить» (ВНУТРИ bootstrap)
   bot.action("chk_sub", async (ctx) => {
     try {
       console.log(
         `[chk_sub] Проверка подписки для пользователя ${ctx.from.id}`
       );
+      console.log(`[chk_sub] Текущая сцена: ${ctx.scene?.current?.id}`);
+      console.log(`[chk_sub] Состояние сессии:`, ctx.session);
+      
       await ctx.answerCbQuery("Проверяю подписки...", { show_alert: false });
 
       const missing = await getMissingSubs(ctx.telegram, ctx.from.id);
@@ -619,12 +640,34 @@ async function bootstrap() {
         `[chk_sub] Пользователь ${ctx.from.id} подписан на все каналы!`
       );
 
-      // Получаем состояние текущей сцены
-      const st = ctx.wizard?.state || ctx.session?.wizard?.state;
-      const post = st?.__pendingPost;
-      const intent = st?.__intent;
+      // Получаем состояние текущей сцены (несколько способов)
+      let st = null;
+      let post = null;
+      let intent = null;
 
-      console.log(`[chk_sub] Состояние: post=${!!post}, intent=${intent}`);
+      // Способ 1: через ctx.wizard.state (если мы в wizard сцене)
+      if (ctx.wizard?.state) {
+        st = ctx.wizard.state;
+        console.log(`[chk_sub] Получено состояние через ctx.wizard.state`);
+      }
+      // Способ 2: через ctx.session (если сохранено в сессии)
+      else if (ctx.session?.__state) {
+        st = ctx.session.__state;
+        console.log(`[chk_sub] Получено состояние через ctx.session.__state`);
+      }
+      // Способ 3: через ctx.scene.state (альтернативный способ)
+      else if (ctx.scene?.state) {
+        st = ctx.scene.state;
+        console.log(`[chk_sub] Получено состояние через ctx.scene.state`);
+      }
+
+      if (st) {
+        post = st.__pendingPost;
+        intent = st.__intent;
+        console.log(`[chk_sub] Найдено состояние: post=${!!post}, intent=${intent}`);
+      } else {
+        console.log(`[chk_sub] Состояние не найдено`);
+      }
 
       if (post && (intent === "sell" || intent === "buy")) {
         console.log(
@@ -676,6 +719,10 @@ async function bootstrap() {
         if (st) {
           delete st.__pendingPost;
           delete st.__intent;
+        }
+        // Также очищаем из сессии
+        if (ctx.session?.__state) {
+          delete ctx.session.__state;
         }
         return ctx.scene.leave();
       }
