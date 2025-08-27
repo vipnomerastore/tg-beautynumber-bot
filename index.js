@@ -270,11 +270,69 @@ const sellWizard = new Scenes.WizardScene(
 
   // финальный шаг: проверка подписок → публикация
   async (ctx) => {
+    console.log(
+      `[SELL] Финальный шаг для пользователя ${ctx.from.id}, данные:`,
+      ctx.callbackQuery?.data
+    );
     if (!ctx.callbackQuery?.data) return;
     const data = ctx.callbackQuery.data;
     await ctx.answerCbQuery();
 
+    // Обработка кнопки "Я подписался - проверить"
+    if (data === "chk_sub") {
+      console.log(`[SELL] Проверка подписки для пользователя ${ctx.from.id}`);
+      
+      const missing = await getMissingSubs(ctx.telegram, ctx.from.id);
+      if (missing.length) {
+        console.log(`[SELL] Пользователь ${ctx.from.id} всё ещё не подписан на: ${missing.join(", ")}`);
+        await ctx.answerCbQuery(`❌ Ещё нет подписки на: ${missing.join(", ")}`, {
+          show_alert: true,
+        });
+        return;
+      }
+
+      console.log(`[SELL] Пользователь ${ctx.from.id} подписан на все каналы!`);
+      
+      // Получаем сохранённые данные объявления
+      const d = ctx.wizard.state;
+      const post = d.__pendingPost;
+      
+      if (post) {
+        console.log(`[SELL] Публикую объявление для пользователя ${ctx.from.id}`);
+        try {
+          const sent = await sendToAll(ctx.telegram, post, {
+            parse_mode: "HTML",
+          });
+          if (sent) {
+            try {
+              await ctx.editMessageText("✅ Подписка подтверждена. Объявление опубликовано!");
+            } catch (editErr) {
+              console.log(`[SELL] Не удалось отредактировать сообщение:`, editErr.message);
+            }
+            
+            await ctx.replyWithHTML("✅ Объявление успешно опубликовано!", mainMenu());
+            console.log(`[SELL] Успешно опубликовано объявление для пользователя ${ctx.from.id}`);
+          } else {
+            await ctx.replyWithHTML("⚠️ Нет целей публикации. Проверьте настройки бота.", mainMenu());
+          }
+        } catch (e) {
+          console.error(`[SELL] Ошибка публикации объявления для пользователя ${ctx.from.id}:`, e);
+          await ctx.replyWithHTML("❌ Не удалось опубликовать объявление. Попробуйте ещё раз.", mainMenu());
+        }
+        
+        // Очищаем временные данные
+        delete d.__pendingPost;
+        delete d.__intent;
+        return ctx.scene.leave();
+      } else {
+        console.log(`[SELL] Нет сохранённого объявления для публикации`);
+        await ctx.answerCbQuery("❌ Нет данных для публикации", { show_alert: true });
+        return;
+      }
+    }
+
     if (data === "sell_confirm") {
+      console.log(`[SELL] Подтверждение продажи от пользователя ${ctx.from.id}`);
       const d = ctx.wizard.state;
       const post =
         "📞 <b>Продажа красивого номера</b>\n" +
@@ -457,6 +515,59 @@ const buyWizard = new Scenes.WizardScene(
     const data = ctx.callbackQuery.data;
     await ctx.answerCbQuery();
 
+    // Обработка кнопки "Я подписался - проверить"
+    if (data === "chk_sub") {
+      console.log(`[BUY] Проверка подписки для пользователя ${ctx.from.id}`);
+      
+      const missing = await getMissingSubs(ctx.telegram, ctx.from.id);
+      if (missing.length) {
+        console.log(`[BUY] Пользователь ${ctx.from.id} всё ещё не подписан на: ${missing.join(", ")}`);
+        await ctx.answerCbQuery(`❌ Ещё нет подписки на: ${missing.join(", ")}`, {
+          show_alert: true,
+        });
+        return;
+      }
+
+      console.log(`[BUY] Пользователь ${ctx.from.id} подписан на все каналы!`);
+      
+      // Получаем сохранённые данные заявки
+      const d = ctx.wizard.state;
+      const post = d.__pendingPost;
+      
+      if (post) {
+        console.log(`[BUY] Публикую заявку для пользователя ${ctx.from.id}`);
+        try {
+          const sent = await sendToAll(ctx.telegram, post, {
+            parse_mode: "HTML",
+          });
+          if (sent) {
+            try {
+              await ctx.editMessageText("✅ Подписка подтверждена. Заявка опубликована!");
+            } catch (editErr) {
+              console.log(`[BUY] Не удалось отредактировать сообщение:`, editErr.message);
+            }
+            
+            await ctx.replyWithHTML("✅ Заявка успешно отправлена!", mainMenu());
+            console.log(`[BUY] Успешно опубликована заявка для пользователя ${ctx.from.id}`);
+          } else {
+            await ctx.replyWithHTML("⚠️ Нет целей публикации. Проверьте настройки бота.", mainMenu());
+          }
+        } catch (e) {
+          console.error(`[BUY] Ошибка публикации заявки для пользователя ${ctx.from.id}:`, e);
+          await ctx.replyWithHTML("❌ Не удалось опубликовать заявку. Попробуйте ещё раз.", mainMenu());
+        }
+        
+        // Очищаем временные данные
+        delete d.__pendingPost;
+        delete d.__intent;
+        return ctx.scene.leave();
+      } else {
+        console.log(`[BUY] Нет сохранённой заявки для публикации`);
+        await ctx.answerCbQuery("❌ Нет данных для публикации", { show_alert: true });
+        return;
+      }
+    }
+
     if (data === "buy_confirm") {
       console.log(`[BUY] Подтверждение покупки от пользователя ${ctx.from.id}`);
       const d = ctx.wizard.state;
@@ -609,138 +720,7 @@ async function bootstrap() {
     return next();
   });
 
-  // Кнопка «Я подписался — проверить» (ВНУТРИ bootstrap)
-  bot.action("chk_sub", async (ctx) => {
-    try {
-      console.log(
-        `[chk_sub] Проверка подписки для пользователя ${ctx.from.id}`
-      );
-      console.log(`[chk_sub] Текущая сцена: ${ctx.scene?.current?.id}`);
-      console.log(`[chk_sub] Состояние сессии:`, ctx.session);
-      
-      await ctx.answerCbQuery("Проверяю подписки...", { show_alert: false });
-
-      const missing = await getMissingSubs(ctx.telegram, ctx.from.id);
-      if (missing.length) {
-        console.log(
-          `[chk_sub] Пользователь ${
-            ctx.from.id
-          } всё ещё не подписан на: ${missing.join(", ")}`
-        );
-        await ctx.answerCbQuery(
-          `❌ Ещё нет подписки на: ${missing.join(", ")}`,
-          {
-            show_alert: true,
-          }
-        );
-        return;
-      }
-
-      console.log(
-        `[chk_sub] Пользователь ${ctx.from.id} подписан на все каналы!`
-      );
-
-      // Получаем состояние текущей сцены (несколько способов)
-      let st = null;
-      let post = null;
-      let intent = null;
-
-      // Способ 1: через ctx.wizard.state (если мы в wizard сцене)
-      if (ctx.wizard?.state) {
-        st = ctx.wizard.state;
-        console.log(`[chk_sub] Получено состояние через ctx.wizard.state`);
-      }
-      // Способ 2: через ctx.session (если сохранено в сессии)
-      else if (ctx.session?.__state) {
-        st = ctx.session.__state;
-        console.log(`[chk_sub] Получено состояние через ctx.session.__state`);
-      }
-      // Способ 3: через ctx.scene.state (альтернативный способ)
-      else if (ctx.scene?.state) {
-        st = ctx.scene.state;
-        console.log(`[chk_sub] Получено состояние через ctx.scene.state`);
-      }
-
-      if (st) {
-        post = st.__pendingPost;
-        intent = st.__intent;
-        console.log(`[chk_sub] Найдено состояние: post=${!!post}, intent=${intent}`);
-      } else {
-        console.log(`[chk_sub] Состояние не найдено`);
-      }
-
-      if (post && (intent === "sell" || intent === "buy")) {
-        console.log(
-          `[chk_sub] Публикую сохранённое сообщение для пользователя ${ctx.from.id}`
-        );
-        try {
-          const sent = await sendToAll(ctx.telegram, post, {
-            parse_mode: "HTML",
-          });
-          if (sent) {
-            try {
-              await ctx.editMessageText(
-                "✅ Подписка подтверждена. Сообщение опубликовано!"
-              );
-            } catch (editErr) {
-              console.log(
-                `[chk_sub] Не удалось отредактировать сообщение:`,
-                editErr.message
-              );
-            }
-
-            const successMsg =
-              intent === "sell"
-                ? "✅ Объявление успешно опубликовано!"
-                : "✅ Заявка успешно отправлена!";
-
-            await ctx.replyWithHTML(successMsg, mainMenu());
-            console.log(
-              `[chk_sub] Успешно опубликовано для пользователя ${ctx.from.id}`
-            );
-          } else {
-            await ctx.replyWithHTML(
-              "⚠️ Нет целей публикации. Проверьте настройки бота.",
-              mainMenu()
-            );
-          }
-        } catch (e) {
-          console.error(
-            `[chk_sub] Ошибка авто-публикации после проверки для пользователя ${ctx.from.id}:`,
-            e
-          );
-          await ctx.replyWithHTML(
-            "❌ Не удалось опубликовать. Попробуйте ещё раз.",
-            mainMenu()
-          );
-        }
-
-        // Очищаем временные данные
-        if (st) {
-          delete st.__pendingPost;
-          delete st.__intent;
-        }
-        // Также очищаем из сессии
-        if (ctx.session?.__state) {
-          delete ctx.session.__state;
-        }
-        return ctx.scene.leave();
-      }
-
-      console.log(`[chk_sub] Нет сохранённого сообщения для публикации`);
-      await ctx.answerCbQuery("✅ Подписка подтверждена!", {
-        show_alert: true,
-      });
-    } catch (e) {
-      console.error(
-        `[chk_sub] Ошибка проверки для пользователя ${ctx.from?.id}:`,
-        e
-      );
-      await ctx.answerCbQuery("❌ Ошибка проверки. Попробуйте позже.", {
-        show_alert: true,
-      });
-    }
-  });
+  // Кнопка «Я подписался — проверить» теперь обрабатывается внутри wizard'ов
 
   try {
     console.log("Попытка удаления webhook...");
