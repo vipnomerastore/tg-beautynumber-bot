@@ -10,6 +10,21 @@ const { Telegraf, Scenes, session, Markup } = require("telegraf");
 const BOT_TOKEN = process.env.BOT_TOKEN || "";
 const TARGET_CHAT_ID = Number(process.env.TARGET_CHAT_ID || 0);
 
+// Доп. цели рассылки: @username или числовые ID через запятую
+const RAW_EXTRA = (process.env.EXTRA_CHAT_IDS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+// Итоговый список целей (строками): ['-100...', '@vipstoresim', ...]
+const CHAT_TARGETS = Array.from(
+  new Set(
+    [TARGET_CHAT_ID ? String(TARGET_CHAT_ID) : null, ...RAW_EXTRA].filter(
+      Boolean
+    )
+  )
+);
+
 // Диагностика токена (без вывода самого значения)
 console.log("BOT_TOKEN length:", BOT_TOKEN.length);
 console.log("BOT_TOKEN has whitespace?", /\s/.test(BOT_TOKEN));
@@ -22,10 +37,26 @@ if (!tokenLooksValid) {
   );
   process.exit(1);
 }
-if (!TARGET_CHAT_ID) {
+if (CHAT_TARGETS.length === 0) {
   console.warn(
-    "WARNING: TARGET_CHAT_ID не задан. Постинг в канал/чат работать не будет."
+    "WARNING: не задано ни одной цели публикации (TARGET_CHAT_ID/EXTRA_CHAT_IDS)."
   );
+}
+
+// Универсальная отправка во ВСЕ цели
+async function sendToAll(tg, text, extra) {
+  if (CHAT_TARGETS.length === 0) return false;
+  let ok = false;
+  for (const target of CHAT_TARGETS) {
+    try {
+      const chatId = /^-?\d+$/.test(target) ? Number(target) : target; // число или @username
+      await tg.sendMessage(chatId, text, extra);
+      ok = true;
+    } catch (e) {
+      console.error("Send error ->", target, e?.description || e?.message || e);
+    }
+  }
+  return ok;
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -82,14 +113,14 @@ const sellWizard = new Scenes.WizardScene(
     return ctx.wizard.next();
   },
 
-  // Step 1 — получить оператора (из кнопки или текста) → спросить регион
+  // Step 1 — оператор → регион
   async (ctx) => {
     if (ctx.callbackQuery?.data?.startsWith("op|")) {
       const val = ctx.callbackQuery.data.split("|")[1];
       await ctx.answerCbQuery();
       if (val === "other") {
         await ctx.reply("Введите название оператора:");
-        return; // останемся на этом шаге ждать текст
+        return; // остаёмся на шаге — ждём текст
       } else {
         ctx.wizard.state.operator = val;
       }
@@ -133,7 +164,7 @@ const sellWizard = new Scenes.WizardScene(
     return ctx.wizard.next();
   },
 
-  // Step 5 — контакт → показать предпросмотр и кнопки подтверждения
+  // Step 5 — предпросмотр + подтверждение
   async (ctx) => {
     if (!ctx.message?.text) return;
     ctx.wizard.state.contact = ctx.message.text.trim();
@@ -176,21 +207,25 @@ const sellWizard = new Scenes.WizardScene(
         `Контакт: <b>${escapeHTML(d.contact)}</b>`;
 
       try {
-        if (!TARGET_CHAT_ID) {
-          await ctx.reply("⚠️ TARGET_CHAT_ID не задан — публикация пропущена.");
-        } else {
-          await ctx.telegram.sendMessage(TARGET_CHAT_ID, post, {
-            parse_mode: "HTML",
-          });
+        const sent = await sendToAll(ctx.telegram, post, {
+          parse_mode: "HTML",
+        });
+        if (sent) {
           await ctx.reply(
             "✅ Объявление отправлено на публикацию!",
             mainMenu()
           );
+        } else {
+          await ctx.reply(
+            "⚠️ Не задано ни одной цели публикации. Проверьте TARGET_CHAT_ID/EXTRA_CHAT_IDS.",
+            mainMenu()
+          );
         }
       } catch (e) {
-        console.error("Ошибка отправки в канал:", e);
+        console.error("Ошибка отправки:", e);
         await ctx.reply(
-          "❌ Не удалось отправить объявление. Проверьте права бота и ID чата."
+          "❌ Не удалось отправить объявление. Проверьте права бота и ID чата.",
+          mainMenu()
         );
       }
     } else if (data === "sell_cancel") {
@@ -265,7 +300,7 @@ const buyWizard = new Scenes.WizardScene(
     ctx.wizard.state.budget = ctx.message.text.trim();
 
     await ctx.reply(
-      "🗺️ <b>Регион номера</b> (если нет — введите то прочерк):",
+      "🗺️ <b>Регион номера</b> (если нет — введите <code>-</code>):",
       { parse_mode: "HTML" }
     );
     return ctx.wizard.next();
@@ -287,13 +322,16 @@ const buyWizard = new Scenes.WizardScene(
     if (!ctx.message?.text) return;
     ctx.wizard.state.contact = ctx.message.text.trim();
 
-    await ctx.reply("📝 <b>Комментарий</b> (необязательно):", {
-      parse_mode: "HTML",
-    });
+    await ctx.reply(
+      "📝 <b>Комментарий</b> (необязательно, можно <code>-</code>):",
+      {
+        parse_mode: "HTML",
+      }
+    );
     return ctx.wizard.next();
   },
 
-  // Step 6 — комментарий → предпросмотр + подтверждение
+  // Step 6 — предпросмотр + подтверждение
   async (ctx) => {
     if (!ctx.message?.text) return;
     ctx.wizard.state.comment = ctx.message.text.trim();
@@ -333,18 +371,22 @@ const buyWizard = new Scenes.WizardScene(
         `Комментарий: <b>${escapeHTML(d.comment)}</b>`;
 
       try {
-        if (!TARGET_CHAT_ID) {
-          await ctx.reply("⚠️ TARGET_CHAT_ID не задан — заявка не отправлена.");
-        } else {
-          await ctx.telegram.sendMessage(TARGET_CHAT_ID, post, {
-            parse_mode: "HTML",
-          });
+        const sent = await sendToAll(ctx.telegram, post, {
+          parse_mode: "HTML",
+        });
+        if (sent) {
           await ctx.reply("✅ Заявка отправлена на обработку!", mainMenu());
+        } else {
+          await ctx.reply(
+            "⚠️ Не задано ни одной цели публикации. Проверьте TARGET_CHAT_ID/EXTRA_CHAT_IDS.",
+            mainMenu()
+          );
         }
       } catch (e) {
-        console.error("Ошибка отправки в канал:", e);
+        console.error("Ошибка отправки:", e);
         await ctx.reply(
-          "❌ Не удалось отправить заявку. Проверьте права бота и ID чата."
+          "❌ Не удалось отправить заявку. Проверьте права бота и ID чата.",
+          mainMenu()
         );
       }
     } else if (data === "buy_cancel") {
