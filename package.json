@@ -6,7 +6,9 @@
   "type": "commonjs",
   "scripts": {
     "start": "node index.js",
-    "start:prod": "NODE_ENV=production node index.js"
+    "start:prod": "NODE_ENV=production node index.js",
+    "debug:subs": "node debug.js",
+    "chat:info": "node get-chat-info.js"
   },
   "engines": {
     "node": ">=18"

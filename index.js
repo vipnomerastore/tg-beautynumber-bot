@@ -1,8 +1,5 @@
 // index.js
-require("dotenv").config({
-  path: "/opt/tg-beautynumber-bot/.env",
-  override: true,
-});
+require("dotenv").config();
 
 const { Telegraf, Scenes, session, Markup } = require("telegraf");
 
@@ -27,6 +24,9 @@ const CHAT_TARGETS = Array.from(
 // Диагностика токена
 console.log("BOT_TOKEN length:", BOT_TOKEN.length);
 console.log("BOT_TOKEN has whitespace?", /\s/.test(BOT_TOKEN));
+console.log("TARGET_CHAT_ID:", TARGET_CHAT_ID);
+console.log("EXTRA_CHAT_IDS:", process.env.EXTRA_CHAT_IDS);
+console.log("CHAT_TARGETS:", CHAT_TARGETS);
 
 const tokenLooksValid = /^\d+:[A-Za-z0-9_\-]{30,}$/.test(BOT_TOKEN);
 if (!tokenLooksValid) {
@@ -529,6 +529,18 @@ async function bootstrap() {
   });
 
   bot.on("text", async (ctx, next) => {
+    // Игнорируем сообщения от ботов
+    if (ctx.from.is_bot) {
+      console.log("Игнорирую сообщение от бота:", ctx.from.id);
+      return;
+    }
+    
+    // Игнорируем сообщения в группах/каналах (только приватные чаты)
+    if (ctx.chat.type !== "private") {
+      console.log("Игнорирую сообщение из группы/канала:", ctx.chat.id);
+      return;
+    }
+    
     if (ctx.scene?.current) return next();
     return sendWelcome(ctx);
   });
@@ -613,7 +625,9 @@ async function bootstrap() {
   });
 
   try {
+    console.log("Попытка удаления webhook...");
     await bot.telegram.deleteWebhook();
+    console.log("Webhook успешно удален");
   } catch (e) {
     console.warn(
       "Не удалось удалить webhook (можно игнорировать):",
@@ -621,8 +635,10 @@ async function bootstrap() {
     );
   }
 
+  console.log("Запуск бота в режиме long polling...");
   await bot.launch({ dropPendingUpdates: true });
   console.log("Бот запущен (long polling).");
+  console.log("Цели для публикации:", CHAT_TARGETS);
 
   process.once("SIGINT", () => bot.stop("SIGINT"));
   process.once("SIGTERM", () => bot.stop("SIGTERM"));
