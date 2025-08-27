@@ -31,7 +31,7 @@ if (!TARGET_CHAT_ID) {
 // ───────────────────────────────────────────────────────────────────────────────
 // UI helpers
 
-const OPERATORS = ["МТС", "Билайн", "МегаФон", "Tele2"];
+const OPERATORS = ["МТС", "Билайн", "МегаФон", "Теле 2"];
 
 const mainMenu = () =>
   Markup.keyboard([["🟢 Продать", "🔎 Купить"], ["ℹ️ Помощь"]])
@@ -46,7 +46,7 @@ const operatorInlineKeyboard = () =>
     ],
     [
       Markup.button.callback("МегаФон", "op|МегаФон"),
-      Markup.button.callback("Tele2", "op|Tele2"),
+      Markup.button.callback("Теле 2", "op|Теле 2"),
     ],
     [Markup.button.callback("✍️ Другое (ввести вручную)", "op|other")],
   ]);
@@ -265,7 +265,7 @@ const buyWizard = new Scenes.WizardScene(
     ctx.wizard.state.budget = ctx.message.text.trim();
 
     await ctx.reply(
-      "🗺️ <b>Регион номера</b> (если нет — введите <code>-</code>):",
+      "🗺️ <b>Регион номера</b> (если нет — введите то прочерк):",
       { parse_mode: "HTML" }
     );
     return ctx.wizard.next();
@@ -287,10 +287,9 @@ const buyWizard = new Scenes.WizardScene(
     if (!ctx.message?.text) return;
     ctx.wizard.state.contact = ctx.message.text.trim();
 
-    await ctx.reply(
-      "📝 <b>Комментарий</b> (необязательно, можно <code>-</code>):",
-      { parse_mode: "HTML" }
-    );
+    await ctx.reply("📝 <b>Комментарий</b> (необязательно):", {
+      parse_mode: "HTML",
+    });
     return ctx.wizard.next();
   },
 
